@@ -15,16 +15,9 @@
 #
 # Authors:
 # Mohab Safey El Din
-#
-# Translated from Maple to Python.
-# External dependencies expected to be provided by the calling environment:
-#   MSolveGroebnerLM, MSolveGroebner, MSolveRealRoots, AdmissibleSolutions (via msolve bindings),
-#   LinearAlgebra (row/column dimension, determinant, sub-matrix),
-#   linalg_jacobian, combinat_choose, sqrfree, factors, primpart,
-#   Groebner_LeadingMonomial, Groebner_HilbertSeries, Groebner_NormalForm,
-#   randpoly, nextprime, SaturateIntersect, ElimSaturateIntersect, SplitSystem.
 
 from helpers import *
+from msolve import *
 
 # ---------------------------------------------------------------------------
 # ComputeMaximalMinors
@@ -40,18 +33,11 @@ def ComputeMaximalMinors(M):
     if nr > nc:
         raise NotImplementedError("Not implemented yet")
 
-    lc = combinat_choose(nc, nr)
-    rows = list(range(1, nr + 1))
-
-    minors = set(
-        LinearAlgebra_SubMatrix(M, rows, l).determinant()
-        for l in lc
-    )
-    minors = list(minors)
+    minors = list(M.minors(nr))
 
     def squarefree_expand(_pol):
         if degree(_pol) > 0:
-            return expand(mul(_p for _p in [_l[0] for _l in sqrfree(_pol)[1]]))
+            return mul(_p for _p in [_l[0] for _l in sqrfree(_pol)[1]])
         return _pol
 
     minors = [squarefree_expand(_pol) for _pol in minors]
@@ -63,7 +49,7 @@ def ComputeMaximalMinors(M):
 # IsRegular
 # ---------------------------------------------------------------------------
 
-def IsRegular(F, vars, opts=None):
+def IsRegular(Fs, vs, opts=None):
     """
     Test whether the system F is regular.
     Returns (bool, ld) where ld is the list of maximal minors of the Jacobian.
@@ -75,11 +61,17 @@ def IsRegular(F, vars, opts=None):
     def rr_call():
         return random.randint(1, 65520)
 
-    hyp = sum(rr_call() * _var for _var in vars) + rr_call()
-    J = Matrix(linalg_jacobian(F, vars))
+    hyp = sum(rr_call() * _var for _var in vs) + rr_call()
+    J = Matrix(
+        [
+            [f.derivative(v) for v in vs]
+            for f in Fs
+        ]
+    )
+    #J = Matrix(linalg_jacobian(Fs, vs))
     ld = ComputeMaximalMinors(J)
     ld = [x for x in ld if x != 0]
-    gb = MSolveGroebnerLM([*F, *ld, hyp], 0, vars, opts)
+    gb = MSolveGroebnerLM([*Fs, *ld, hyp], 0, vs, opts)
     if gb == [1]:
         return True, ld
     else:
@@ -324,6 +316,10 @@ def TestGenericLineDegreeRegular(F, vars, hyp, opts=None):
         opts = {}
 
     rag_hilb_var = SR.var("rag_hilb_var")
+    R = extend_ring(vars[0].parent(), rag_hilb_var)
+    F, vars, hyp, rag_hilb_var = convert_to_ring(
+        R, F, vars, hyp, rag_hilb_var
+    )
 
     if len(F) < len(vars):
         J = Matrix(linalg_jacobian([*F, hyp], vars))
@@ -333,7 +329,8 @@ def TestGenericLineDegreeRegular(F, vars, hyp, opts=None):
 
     gb = MSolveGroebnerLM([*F, *minors], 0, vars, opts)
     hs = Groebner_HilbertSeries(gb, vars, rag_hilb_var)
-    if degree(denom(hs)) == 0:
+
+    if hs.denominator().degree() == 0:
         deg = subs({rag_hilb_var: 1}, hs)
     else:
         deg = -2
@@ -344,7 +341,7 @@ def TestGenericLineDegreeRegular(F, vars, hyp, opts=None):
 # HasFiniteCriticalLocus
 # ---------------------------------------------------------------------------
 
-def HasFiniteCriticalLocus(eqs, F, minors, singminors, vars, opts=None):
+def HasFiniteCriticalLocus(eqs, Fs, minors, singminors, vs, opts=None):
     """
     Test whether each singular component gives a finite critical locus.
     """
@@ -352,17 +349,24 @@ def HasFiniteCriticalLocus(eqs, F, minors, singminors, vars, opts=None):
         opts = {}
 
     rag_sat_var = SR.var("rag_sat_var")
+    R = PolynomialRing(vs[0].parent(), [rag_sat_var]).flattening_morphism().codomain()
+    rag_sat_var = R(rag_sat_var)
+    eqs = [R(f) for f in eqs]
+    Fs = [R(f) for f in Fs]
+    vs = [R(v) for v in vs]
+    minors = [R(f) for f in minors]
+    singminors = [R(f) for f in singminors]
 
     def rr():
-        return random.randint(1, nextprime(2**30))
+        return random.randint(1, nextprime(Integer(2**30)))
 
-    hyp = sum(rr() * v for v in vars) + rr()
+    hyp = sum(rr() * v for v in vs) + rr()
     for i in range(len(singminors)):
         pol = singminors[i]
         gb = MSolveGroebnerLM(
-            [rag_sat_var * pol - 1, *eqs, *F, hyp, *minors, *singminors[:i]],
+            [rag_sat_var * pol - 1, *eqs, *Fs, hyp, *minors, *singminors[:i]],
             0,
-            [rag_sat_var, *vars],
+            [rag_sat_var, *vs],
             {**opts, "linalg": 42}
         )
         if gb != [1]:
@@ -390,7 +394,7 @@ def FindGenericLineRegular(eqs, F, lc, singminors, vars, opts=None):
 
     # Generic degree
     def rr():
-        return random.randint(1, nextprime(2**30))
+        return random.randint(1, nextprime(Integer(2**30)))
 
     hyp = sum(rr() * v for v in vars)
     gendeg, minors = TestGenericLineDegreeRegular([*eqs, *dF], vars, hyp, opts)
@@ -497,12 +501,18 @@ def CoeffDeform_eps(eqs, F, vars, eps, cstr, opts=None):
     sat_var = SR.var("sat_var")
 
     allvars = [sat_var, *vars, eps]
+    R = extend_ring(vars[0].parent(), [sat_var])
+    eqs, F, vars, eps, cstr, sat_var, allvars = convert_to_ring(
+        R, eqs, F, vars, eps, cstr, sat_var, allvars
+    )
+
+    tmp = [sat_var * eps - 1, *eqs, *[F[i] + rr() * eps for i in range(len(F))]]
     gb0 = MSolveGroebnerLM(
         [sat_var * eps - 1, *eqs, *[F[i] + rr() * eps for i in range(len(F))]],
         0, allvars,
         {**opts, "linalg": 42}
     )
-    lc = [[1] * len(F)]
+    lc = [[Integer(1)] * len(F)]
     while True:
         for k in range(len(lc)):
             gb = MSolveGroebnerLM(
@@ -633,24 +643,25 @@ def ConstructFibers(ll, hyp, cstr):
     Given a sorted list of intervals ll, construct sample fiber values
     (one per gap, plus one below and one above) avoiding zeros in cstr.
     """
-    vvar = list(indets(hyp))[0]
+    vvar = hyp.variables()[0]
+    R = vvar.parent()
 
     # Smallest fiber
     val = math.floor(ll[0][0]) - 1
-    ls = {vvar: solve(hyp - val)}
+    ls = {vvar: solve_line(hyp - val, vvar)}
     if 0 in subs(ls, cstr):
         return ConstructFibers([[val, val], *ll], hyp, cstr)
 
     # Largest fiber
     val = math.ceil(ll[-1][1]) + 1
-    ls = {vvar: solve(hyp - val)}
+    ls = {vvar: solve_line(hyp - val, vvar)}
     if 0 in subs(ls, cstr):
         return ConstructFibers([*ll, [val, val]], hyp, cstr)
 
     # Remaining ones
     for i in range(len(ll) - 1):
         val = (ll[i][1] + ll[i + 1][0]) / 2
-        ls = {vvar: solve(hyp - val)}
+        ls = {vvar: solve_line(hyp - val, vvar)}
         if 0 in subs(ls, cstr):
             new_ll = sorted([[val, val], *ll], key=lambda a: a[1])
             return ConstructFibers(new_ll, hyp, cstr)
@@ -706,6 +717,12 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
     if opts is None:
         opts = {}
 
+    R = extend_ring(vars[0].parent(), [rag_sep_elem])
+    Equations, Fam, Positive, NotNull, vars, hyp, minors, rag_sep_elem = convert_to_ring(
+        R, Equations, Fam, Positive, NotNull, vars, hyp, minors, rag_sep_elem
+    )
+
+
     verb = opts.get("verb", 0)
     rd = random.randint(1, 65521)
 
@@ -752,8 +769,9 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
         return hyp, rr
     else:
         i = 0
-        vvar = list(indets(hyp))[0]
-        ls = {vvar: solve(hyp - i, vvar)}
+
+        vvar = R(SR(hyp).variables()[0])
+        ls = {vvar: R(solve(SR(hyp - i), SR(vvar))[0].rhs())}
 
         def rr_rand():
             return random.randint(1, 65521)
@@ -768,7 +786,7 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
             lhyp = [randpoly(vars, degree=1, dense=True)
                     for _ in range(len(vars) - len(lF) + 1)]
             gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-            ls = {vvar: solve(hyp - i, vvar)}
+            ls = {vvar: R(solve(SR(hyp - i), SR(vvar))[0].rhs())}
         return hyp, [i]
 
 
@@ -1497,7 +1515,8 @@ def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
     Solve a univariate polynomial system satisfying constraints.
     Returns a list of solutions.
     """
-    g = 0
+    R = vs[0].parent()
+    g = R(0)
     for i in range(len(Equations)):
         g = gcd(g, Equations[i])
     if degree(g) == 0:
@@ -1531,7 +1550,7 @@ def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
         return sols
 
     # Case where g = 0
-    upol = mul(*Fam)
+    upol = mul(Fam)
     for i in range(len(Equations)):
         upol = gcd(upol, Equations[i])
     sq = sqrfree(upol)[1]
@@ -1545,22 +1564,22 @@ def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
         newpol = expand(newpol * Equations[i])
         if degree(newpol) > 1:
             sq = sqrfree(newpol)[1]
-            newpol = mul(*[p[0] for p in sq])
+            newpol = mul([p[0] for p in sq])
     for i in range(len(Fam)):
         newpol = expand(newpol * Fam[i])
         if degree(newpol) > 1:
             sq = sqrfree(newpol)[1]
-            newpol = mul(*[p[0] for p in sq])
+            newpol = mul([p[0] for p in sq])
     for i in range(len(Inequalities)):
         newpol = expand(newpol * Inequalities[i])
         if degree(newpol) > 1:
             sq = sqrfree(newpol)[1]
-            newpol = mul(*[p[0] for p in sq])
+            newpol = mul([p[0] for p in sq])
     for i in range(len(Inequations)):
         newpol = expand(newpol * Inequations[i])
         if degree(newpol) > 1:
             sq = sqrfree(newpol)[1]
-            newpol = mul(*[p[0] for p in sq])
+            newpol = mul([p[0] for p in sq])
     newpol = expand(newpol)
 
     uroots = MSolveRealRoots([newpol], vs, [])[1]
@@ -1574,18 +1593,18 @@ def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
     for i in range(len(uroots) - 1):
         mid = SmallMidRational(uroots[i][1], uroots[i + 1][0])
         if -1 not in [sign(subs({vs[0]: mid}, p)) for p in Inequalities]:
-            sols.append([{vs[0]: [mid, mid]}])
+            sols.append({vs[0]: [mid, mid]})
 
     if len(uroots) > 0:
         mid = math.floor(uroots[0][0] - 1)
         if -1 not in [sign(subs({vs[0]: mid}, p)) for p in Inequalities]:
-            sols = [[{vs[0]: [mid, mid]}], *sols]
+            sols = [{vs[0]: [mid, mid]}, *sols]
         mid = math.ceil(uroots[-1][1] + 1)
         if -1 not in [sign(subs({vs[0]: mid}, p)) for p in Inequalities]:
-            sols.append([{vs[0]: [mid, mid]}])
+            sols.append({vs[0]: [mid, mid]})
     else:
         if -1 not in [sign(subs({vs[0]: 0}, p)) for p in Inequalities]:
-            sols = [[{vs[0]: [0, 0]}]]
+            sols = [{vs[0]: [0, 0]}]
 
     return sols
 
@@ -1601,6 +1620,8 @@ def AdmissibleSolutions(tsols, np):
     """
     if len(tsols) == 2:
         return tsols[1]
+    elif len(tsols) == 0:
+        return []
 
     sols = []
     if len(tsols[1]) > 0 and len(tsols) > 2:
@@ -1645,6 +1666,7 @@ def GenerateDeformedFamilies_eps(eqs, FamPositive, FamNotNull,
         lc = CoeffDeform_eps(eqs, deform[i], vars, eps, cstr, opts)
         sys = [*eqs, *[deform[i][j] - lc[j] * eps for j in range(len(deform[i]))]]
         lsys.append(sys)
+
     return lsys
 
 
@@ -1774,9 +1796,11 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
     if verb >= 1:
         print("]", end="")
 
+    R = vars[0].parent()
+
     for i in range(len(bounds)):
-        v = list(indets(hyp))[0]
-        hypsol = solve(hyp - bounds[i], v)
+        v = R(SR(hyp).variables()[0])
+        hypsol = R(solve(SR(hyp - bounds[i]), SR(v))[0].rhs())
         ls = {v: hypsol}
         NewEquations = [expand(subs(ls, p)) for p in Equations]
         NewFamPositive = [expand(subs(ls, p)) for p in FamPositive]
@@ -1786,6 +1810,7 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
         newvars = [x for x in vars if x != v]
         tsols = SolveFamily(NewEquations, NewFamPositive, NewFamNotNull,
                             NewInequalities, NewInequations, newvars, opts)
+
         if degree(hypsol) <= 0:
             sols.extend([{v: [hypsol, hypsol], **s} for s in tsols])
         else:
@@ -1824,7 +1849,7 @@ def DegenerateDeformedSystem(sys, ld, Inequalities, Inequations, vars, eps, opts
 # InfiniteBranches
 # ---------------------------------------------------------------------------
 
-def InfiniteBranches(sys, ld, Inequalities, Inequations, vars, eps, opts=None):
+def InfiniteBranches(sys, ld, Inequalities, Inequations, vs, eps, opts=None):
     """
     Compute solutions near infinity (as eps -> 0) for a deformed system.
     Returns (sols1, sols2).
@@ -1832,12 +1857,16 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vars, eps, opts=None):
     if opts is None:
         opts = {}
 
-    _T, rag_sat_var, rag_sep = SR.var("_T, rag_sat_var, rag_sep")
+    T_, rag_sat_var, rag_sep = SR.var("T_, rag_sat_var, rag_sep")
+    R = extend_ring(vs[0].parent(), [T_, rag_sat_var, rag_sep])
+    sys, ld, Inequalities, Inequations, vs, eps, T_, rag_sat_var, rag_sep = convert_to_ring(
+        R, sys, ld, Inequalities, Inequations, vs, eps, T_, rag_sat_var, rag_sep
+    )
 
     verb = opts.get("verb", 0)
     isbounded = opts.get("isbounded", 0)
 
-    allvars = [*vars, eps]
+    allvars = [*vs, eps]
 
     def rr():
         return random.randint(2**16, 2**30)
@@ -1848,8 +1877,8 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vars, eps, opts=None):
         0, [rag_sat_var, *allvars],
         {**opts, "elim": 1}
     )
-    hs = Groebner_HilbertSeries(gb, tdeg(*allvars), _T)
-    deg = abs(subs({_T: 1}, numer(hs)))
+    hs = Groebner_HilbertSeries(gb, allvars, T_)
+    deg = abs(QQ(subs({T_: 1}, numer(hs))))
     dim = degree(denom(hs))
 
     if dim > 0:
@@ -1886,6 +1915,7 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vars, eps, opts=None):
         [*allvars, rag_sep],
         [], opts
     )
+
     if sols[0] > 0:
         gb = SaturateIntersect(sys, ld[0], [eps], allvars, opts)
         sols = MSolveRealRoots(
@@ -1894,6 +1924,10 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vars, eps, opts=None):
             []
         )
 
+    sols[1] = [
+        {R(v): k for v, k in sol.items()}
+        for sol in sols[1]
+    ]
     spec = [
         abs(x)
         for _p in sols[1]
@@ -1940,7 +1974,13 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
     if opts is None:
         opts = {}
 
+    sols1, sols2 = [], []
+
     eps, rag_sat_var = SR.var("eps, rag_sat_var")
+    R = extend_ring(vs[0].parent(), [eps, rag_sat_var])
+    Equations, FamPositive, FamNotNull, Inequalities, Inequations, vs, eps, rag_sat_var = convert_to_ring(
+        R, Equations, FamPositive, FamNotNull, Inequalities, Inequations, vs, eps, rag_sat_var
+    )
 
     verb = opts.get("verb", 0)
     isbounded = opts.get("isbounded", 0)
@@ -1948,8 +1988,15 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
     maxdeg = max(degree(p) for p in [*Equations, *FamPositive, *FamNotNull])
     lsys = GenerateDeformedFamilies_eps(
         Equations, FamPositive, FamNotNull, vs, eps,
-        {*Inequalities, *Inequations}
+        [*Inequalities, *Inequations]
     )
+
+    # Inequations that are NOT part of FamNotNull — those are already
+    # deformed inside lsys[i] and must not be appended again.
+    extra_ineqs = [p for p in Inequations if p not in FamNotNull
+                                          and -p not in FamNotNull]
+    Inequations = extra_ineqs
+
     J = Matrix(linalg_jacobian([*Equations, *FamPositive, *FamNotNull], vs))
     delta = ComputeMaximalMinors(J)
     if delta == [0]:
@@ -1999,6 +2046,9 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                 # emin = min(abs(op(subs(_p, eps))) for _p in sols[1])
                 #emin:=min(map(abs, map(op, map(_p->subs(_p, eps), sols[2]))));
 
+        # TODO - figure out 
+        print("TODO:")
+        print("ineq:", Inequations)
         for j in range(len(Inequations)):
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], Inequations[j]],
@@ -2016,7 +2066,11 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                     for x in subs(_p, eps) # TODO - subs
                 )
 
+        # Find rational approximation of emin
+        emin = AA(emin).n().nearby_rational(emin/2**10)/2
         def _solve_at_emin(emin_val):
+            
+            R = eps.parent()
             return MSolveRealRoots(
                 subs({eps: emin_val}, lsys[i]),
                 vs,
@@ -2041,7 +2095,7 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                 sols = _solve_at_emin(emin)
 
         sols = AdmissibleSolutions(sols, len(Inequalities))
-        sols = [{v:k for v,k in _p.items() if v in vars} for _p in sols]
+        sols = [{v:k for v,k in _p.items() if v in vs} for _p in sols]
         lsols.extend(sols)
 
         # Additional specialisations of eps when all constraints are inequations
@@ -2162,7 +2216,6 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
             print("]", end="")
         if len(sols) > 0 and isempty > 0:
             return sols
-
     return sols
 
 
@@ -2235,31 +2288,31 @@ def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None
                    [_pol for _pol in Inequalities if degree(_pol) == 0]]):
         return []
 
-    vars = list(indets(Equations))
+    vs = list(indets(Equations))
 
     # Check that Equations is regular enough
-    boo, singminors = IsRegular(Equations, vars)
+    boo, singminors = IsRegular(Equations, vs)
     if boo is False:
         raise NotImplementedError("Singular case not implemented yet")
 
-    svars = [v for v in list(indets(Inequalities) | indets(Inequations))
-             if v not in vars]
+    svars = [v for v in list(set(indets(Inequalities)) | set(indets(Inequations)))
+             if v not in vs]
     spt = GoodFiberValue_svars(svars, Inequalities, Inequations)
     spos = subs(spt, Inequalities)
     sineq = subs(spt, Inequations)
 
-    if len(vars) == len(Equations):
+    if len(vs) == len(Equations):
         if -1 in [sign(_pol) for _pol in
                   [_pol for _pol in spos if degree(_pol) <= 0]]:
             return []
-        sols = MSolveRealRoots(Equations, vars, [*spos, *sineq], opts)
+        sols = MSolveRealRoots(Equations, vs, [*spos, *sineq], opts)
         sols = AdmissibleSolutions(sols, len(spos))
         sols = [[*_sol, *list(spt.items())] for _sol in sols]
         return sols
 
     # Find a good choice of projection
     hyp, minors, gendeg = FindGenericLineRegular(
-        Equations, [], [], singminors, vars, opts
+        Equations, [], [], singminors, vs, opts
     )
 
     # Compute the associated critical points and select those satisfying
@@ -2267,7 +2320,7 @@ def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None
     if gendeg == 0:
         return [0, []]
 
-    sols = MSolveRealRoots([*Equations, *minors], vars, [*spos, *sineq], opts)
+    sols = MSolveRealRoots([*Equations, *minors], vs, [*spos, *sineq], opts)
     sols = AdmissibleSolutions(sols, len(spos))
     sols = [[*_sol, *list(spt.items())] for _sol in sols]
 
@@ -2318,6 +2371,12 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
     isempty = opts.get("isempty", 0)
 
     vs = indets([*Equations, *Inequalities, *Inequations])
+    R = PolynomialRing(QQ, vs)
+    vs = [R(v) for v in vs]
+    Equations = [R(f) for f in Equations]
+    Inequalities = [R(f) for f in Inequalities]
+    Inequations = [R(f) for f in Inequations]
+
     sols = []
     lsigns = set()
 
@@ -2326,7 +2385,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         if isempty >= 1 and len(sols) > 0:
             return sols
 
-    oldvars = indets(Equations)
+    oldvars, = convert_to_ring(R, indets(Equations))
     nc = len(Inequalities) + len(Inequations)
     _Studied = [[[], []]]
     newsols = []
@@ -2391,12 +2450,13 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
     # reduce the combinatorial complexity
     for i in range(len(Inequations)):
         pol = Inequations[i]
-        newvars = list(indets(pol))
+        newvars = list(pol.variables())
         _toStudy = [
             [l[0], [*l[1], i]]
             for l in _Studied
             if len(l[0]) + len(l[1]) <= len(vs)
         ]
+
         if verb >= 1:
             print(f"\nDealing with (non-zero) constraint "
                   f"{len(Inequalities) + i + 1} / {nc} of degree {pol.degree()}")
@@ -2412,7 +2472,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         # the study of some subfamilies can be skipped
         if len(oldvars) > 0 and "card" not in newopts:
             new_only = [v for v in newvars if v not in oldvars]
-            if pol.degree(new_only) == 1:
+            if max(sum(term[1].degree(v) for v in new_only) for term in pol) == 1:
                 newopts = {**opts, "newvars": indets(pol) | indets(oldvars)}
             else:
                 newopts = opts
@@ -2421,9 +2481,10 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
             Equations, _toStudy, Inequalities, Inequations, vs, newopts
         )
         midsols = [
-            {v: (k[0] + k[1]) / 2 for v, k in pt.items()}
+            {R(v): (k[0] + k[1]) / 2 for v, k in pt.items()}
             for pt in newsols
         ]
+
         lsigns = lsigns | set(
             tuple(map(sign, [q.subs(pt) for q in Inequations]))
             for pt in midsols
@@ -2433,16 +2494,21 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
 
         # Inequations[i] has no sign change, it can be removed
         if len(set(s[i] for s in lsigns)) == 1:
-            print("Removes non-zero constraint", Inequations[i])
+            if verb >= 1:
+                print("Removes non-zero constraint", Inequations[i])
             _toStudy = [_l for _l in _toStudy if Inequations[i] not in _l]
 
-        sols = list(set(tuple(sorted(s.items())) for s in [*sols, *newsols]))
-        sols = [dict(s) for s in sols]
+        for sol in newsols:
+            if sol not in sols:
+                sols.append(sol)
+        #sols = list(set(tuple(sorted(s.items())) for s in [*sols, *newsols]))
+        #sols = [dict(s) for s in sols]
 
         if isempty >= 1 and len(sols) > 0:
             return sols
 
         _Studied = [*_Studied, *_toStudy]
-        oldvars = list(indets(pol) | indets(oldvars))
+        #debug(loop = "", i = i, sols = sols)
+        oldvars = list(set(oldvars) | set(R(v) for v in SR(pol).variables()))
 
     return sols

@@ -28,12 +28,13 @@ import random
 import string
 import math
 from fractions import Fraction
+from helpers import isprime, debug
 from sage.misc.sage_eval import sage_eval
 from sage.features.msolve import msolve
 from sage.sets.primes import Primes
 from sage.symbolic.relation import solve
 from sage.arith.misc import gcd
-from sage.all import mul, log, floor, binomial, ceil
+from sage.all import mul, log, floor, binomial, ceil, next_prime
 from sage.matrix.constructor import Matrix
 from sage.symbolic.ring import SR
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
@@ -260,15 +261,6 @@ def CheckCharacteristic(fc):
     return fc
 
 
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -299,15 +291,15 @@ def MSolveGroebner(F, fc, vs, opts=None):
     if opts is None:
         opts = {}
     field_char = CheckCharacteristic(fc)
+    R_original = vs[0].parent()
 
     merged_opts = {**opts, "gb": 2}
     str_cmd, fname1, fname2, verb, output = GetOptions(merged_opts)
 
     nvars   = len(vs)
     xx      = list(SR.var('xx_', nvars))
-    if fc == 0:
-        R = PolynomialRing(QQ, xx)
-        xx = list(R.gens())
+    R = PolynomialRing(QQ, xx)
+    xx = list(R.gens())
     subs_in  = {vs[i]: xx[i] for i in range(nvars)}
     subs_out = {xx[i]: vs[i] for i in range(nvars)}
 
@@ -323,6 +315,7 @@ def MSolveGroebner(F, fc, vs, opts=None):
             raw = f.read()[:-2]
         results_renamed = sage_eval(raw, locals={f'{v}': v for v in xx})
         results = _subs_results(results_renamed, subs_out)
+        results = [R_original(r) for r in results]
         RemoveFiles(fname1, fname2)
         return results
     except Exception as e:
@@ -336,15 +329,15 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
     if opts is None:
         opts = {}
     field_char = CheckCharacteristic(fc)
+    R_original = vs[0].parent()
 
     merged_opts = {**opts, "gb": 1}
     str_cmd, fname1, fname2, verb, output = GetOptions(merged_opts)
 
     nvars   = len(vs)
     xx      = list(SR.var('xx_', nvars))
-    if fc == 0:
-        R = PolynomialRing(QQ, xx)
-        xx = list(R.gens())
+    R = PolynomialRing(QQ, xx)
+    xx = list(R.gens())
     subs_in  = {vs[i]: xx[i] for i in range(nvars)}
     subs_out = {xx[i]: vs[i] for i in range(nvars)}
 
@@ -360,9 +353,13 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
             raw = f.read()[:-2]
         results_renamed = sage_eval(raw, locals={f'{v}': v for v in xx})
         results = _subs_results(results_renamed, subs_out)
+        results = [R_original(r) for r in results]
         RemoveFiles(fname1, fname2)
         return results
     except Exception as e:
+        print(results)
+        print(R)
+        raise e
         raise RuntimeError("There has been an issue in msolve computation") from e
 
 
@@ -376,7 +373,9 @@ def get_parametrization(vs, system, fc=0):
         print(",".join([str(v) for v in vs]), file=msolve_in)
         print(fc, file=msolve_in)
         print(*(pol.replace(" ", "") for pol in system), sep=",\n", file=msolve_in)
+        f = open(msolve_in.name)
         msolve_in.close()
+        
         msolve_out = subprocess.run(command, capture_output=True, text=True)
     finally:
         os.unlink(msolve_in.name)
@@ -456,8 +455,6 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
       [-1, []]    -> no real solution
       [0, [sols]] -> finitely many complex solutions; sols is a list of
                      {var: [lo, hi]} dicts (isolating intervals)
-      [0, [sols], [vals]]  -> same, plus interval values of G at each solution
-      if "output"=1: intervals replaced by midpoints
     """
     if G is None:
         G = []
@@ -478,11 +475,12 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
             "mid points cannot be returned with extra constraints: change your options"
         )
     
-    R = PolynomialRing(QQ, vs)
-    Fs = [R(f) for f in Fs]
+    R = vs[0].parent()
+    Fs = [R(f) for f in Fs if f != 0]
     vs = [R(v) for v in vs]
 
     merged_opts = {**opts, "param": 1}
+
     P, Qs, _ = MSolveParam(Fs, 0, vs, merged_opts)
     Pd = P.derivative()
     u_ = P.parent().gens()[0]
@@ -490,7 +488,7 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
     for u in P.roots(AA, multiplicities=False):
         sols.append(
             {
-                v: (Qs[i]/Pd).subs({u_:u}) for i, v in enumerate(vs)
+                v: [(Qs[i]/Pd).subs({u_:u}), (Qs[i]/Pd).subs({u_:u})] for i, v in enumerate(vs)
             }
         )
 
