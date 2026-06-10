@@ -1106,7 +1106,7 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
         lhyp = [randpoly(vars, degree=1, dense=True)
                 for k in range(len(vars) - len(lF) + 1)]
         gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-        ls = {vvar: solve_line_line(hyp - j, vvar)}
+        ls = {vvar: solve_line(hyp - j, vvar)}
         while gb != [1] or 0 in subs(ls, [*Positive, *NotNull, *Fam]):
             j += 1
             lF = [*Equations, *[_p + rr() for _p in Fam], hyp - j]
@@ -1638,6 +1638,7 @@ def AdmissibleSolutions(tsols, np):
     Filter tsols[1] keeping only solutions where the first np sign
     conditions are positive and the remaining are non-zero.
     """
+
     if len(tsols) == 2:
         return tsols[1]
     elif len(tsols) == 0:
@@ -1835,8 +1836,8 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
             sols.extend([{v: [hypsol, hypsol], **s} for s in tsols])
         else:
             sols.extend([
-                {v: [subs({v: k[0] for v, k in s.items()}, hypsol),
-                     subs({v: k[1] for v, k in s.items()}, hypsol)],
+                {v: [subs({R(v): k[0] for v, k in s.items()}, hypsol),
+                     subs({R(v): k[1] for v, k in s.items()}, hypsol)],
                  **{k: val for k, val in s.items()}}
                 for s in tsols
             ])
@@ -2024,10 +2025,8 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
 
     lsols = []
     for i in range(len(lsys)):
-        # TODO - when maxdeg>1 this is wonky
-        # probably has to do with delta
         if maxdeg > 1:
-            debug(sys=[rag_sat_var * eps - 1, *lsys[i], *delta], vs = [rag_sat_var, eps, *vs])
+            #debug(sys=[rag_sat_var * eps - 1, *lsys[i], *delta], vs = [rag_sat_var, eps, *vs])
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], *delta],
                 [rag_sat_var, eps, *vs],
@@ -2070,8 +2069,8 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                 #emin:=min(map(abs, map(op, map(_p->subs(_p, eps), sols[2]))));
 
         # TODO - figure out 
-        print("TODO:")
-        print("ineq:", Inequations)
+        #print("TODO:")
+        #print("ineq:", Inequations)
         for j in range(len(Inequations)):
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], Inequations[j]],
@@ -2177,7 +2176,6 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
     """
     if opts is None:
         opts = {}
-
     verb = opts.get("verb", 0)
     isempty = opts.get("isempty", 0)
     isbounded = opts.get("isbounded", 0)
@@ -2417,17 +2415,12 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
     # reduce the combinatorial complexity
     for i in range(len(Inequalities)):
         pol = Inequalities[i]
-        newvars = list(indets(pol))
+        newvars = list(pol.variables())
         _toStudy = [
             [[*l[0], i], []]
             for l in _Studied
             if len(l[0]) + len(l[1]) <= len(vs)
         ]
-
-        if verb >= 1:
-            print(f"\nDealing with (positivity) constraint {i + 1} / {nc} "
-                  f"of degree {pol.degree()}")
-            print(f"Number of systems to study is {len(_toStudy)}")
 
         if max(p.degree() for p in [*Equations, pol, *Inequalities[:i]]) == 1:
             newopts = {**opts, "card": i + 1}
@@ -2440,7 +2433,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         if len(oldvars) > 0 and "card" not in newopts:
             new_only = [v for v in newvars if v not in oldvars]
             if pol.degree(new_only) == 1:
-                newopts = {**opts, "newvars": indets(pol) | indets(oldvars)}
+                newopts = {**opts, "newvars": list(set(pol.variables()) | set(oldvars))}
                 if newopts == opts:
                     oldnewvars = new_only
             else:
@@ -2461,11 +2454,13 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         if verb >= 1 and len(Inequations) > 0:
             print(f"Signs of inequations at computed points: {lsigns}")
 
-        sols.extend(newsols)
+        for sol in newsols:
+            if sol not in sols:
+                sols.append(sol)
         _Studied = [*_Studied, *_toStudy]
         if isempty >= 1 and len(sols) > 0:
             return sols
-        oldvars = list(indets(pol) | indets(oldvars))
+        oldvars = list(set(pol.variables()) | set(oldvars))
 
     npos = len(Inequalities)
 
@@ -2479,11 +2474,6 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
             for l in _Studied
             if len(l[0]) + len(l[1]) <= len(vs)
         ]
-
-        if verb >= 1:
-            print(f"\nDealing with (non-zero) constraint "
-                  f"{len(Inequalities) + i + 1} / {nc} of degree {pol.degree()}")
-            print(f"Number of systems to study is {len(_toStudy)}")
 
         if max(p.degree() for p in [*Equations, pol, *Inequalities, *Inequations[:i]]) == 1:
             newopts = {**opts, "card": i + npos + 1}
@@ -2503,6 +2493,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         newsols = SemiAlgebraicSolveIterateOnFamilies(
             Equations, _toStudy, Inequalities, Inequations, vs, newopts
         )
+
         midsols = [
             {R(v): (k[0] + k[1]) / 2 for v, k in pt.items()}
             for pt in newsols
@@ -2524,8 +2515,6 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         for sol in newsols:
             if sol not in sols:
                 sols.append(sol)
-        #sols = list(set(tuple(sorted(s.items())) for s in [*sols, *newsols]))
-        #sols = [dict(s) for s in sols]
 
         if isempty >= 1 and len(sols) > 0:
             return sols

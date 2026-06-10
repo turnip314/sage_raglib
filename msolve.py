@@ -28,7 +28,7 @@ import random
 import string
 import math
 from fractions import Fraction
-from helpers import isprime, debug, extend_ring, convert_to_ring
+from helpers import isprime, debug, extend_ring, convert_to_ring, subs
 from sage.all import Ideal
 from sage.misc.sage_eval import sage_eval
 from sage.features.msolve import msolve
@@ -364,7 +364,7 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
         raise RuntimeError("There has been an issue in msolve computation") from e
 
 
-def get_parametrization(vs, system, fc=0, allow_null=False):
+def get_parametrization(vs, system, fc=0, allow_null=False, allow_inf=False):
     filename = msolve().absolute_filename()
     msolve_in = tempfile.NamedTemporaryFile(mode="w", encoding="ascii", delete=False)
     command = [filename, "-f", msolve_in.name, "-P", "2"]
@@ -387,7 +387,9 @@ def get_parametrization(vs, system, fc=0, allow_null=False):
     result = sage_eval(result[:-2])
 
     if allow_null and result[0] == -1:
-        return None
+        return -1
+    elif allow_inf and result[0] > 0:
+        return 1
     if result[0] != 0:
         print(result)
         raise Exception(
@@ -396,16 +398,16 @@ def get_parametrization(vs, system, fc=0, allow_null=False):
 
     return result
 
-def MSolveParam(Fs, fc, vs, allow_null=False, opts=None):
+def MSolveParam(Fs, fc, vs, allow_null=False, allow_inf=False, opts=None):
     """
     Compute a rational parametrization of the solutions of F.
 
     Returns [elim_poly, [var_i = expr_i, ...]] where each coordinate
     is expressed as a rational function of the root of elim_poly.
     """
-    result = get_parametrization(vs, Fs, allow_null=allow_null)
-    if result is None:
-        return None
+    result = get_parametrization(vs, Fs, allow_null=allow_null, allow_inf=allow_inf)
+    if type(result) != list:
+        return result
 
     _, nvars, _, msvars, _, param = result[1]
 
@@ -487,10 +489,11 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
     vs = [R(v) for v in vs]
 
     merged_opts = {**opts, "param": 1}
-
-    param = MSolveParam(Fs, 0, vs, merged_opts)
-    if param is None:
-        return [0, []]
+    param = MSolveParam(Fs, 0, vs, allow_null=True, allow_inf=True, opts=merged_opts)
+    if param == -1:
+        return [-1, []]
+    elif param == 1:
+        return [1]
     P, Qs, _ = param
     Pd = P.derivative()
     u_ = P.parent().gens()[0]
@@ -501,8 +504,9 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
                 v: [(Qs[i]/Pd).subs({u_:u}), (Qs[i]/Pd).subs({u_:u})] for i, v in enumerate(vs)
             }
         )
+    signs = [[subs(sol, g) for g in G] for sol in sols]
 
-    return [0, sols]
+    return [0, sols, signs]
 
 def MSolveSat(Fs, Gs, vs, fc=0):
     R = vs[0].parent()
