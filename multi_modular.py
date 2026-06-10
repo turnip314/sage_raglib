@@ -33,7 +33,7 @@ from sage.all import (
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.rings.polynomial.term_order import TermOrder
 import sys
-from msolve import MSolveGroebner, MSolveGroebnerLM
+from msolve import MSolveGroebner, MSolveGroebnerLM, MSolveSat
 
 
 # ---------------------------------------------------------------------------
@@ -575,9 +575,6 @@ def SaturateIntersectMSolve(eqs1, pol, eqs2, vs, opts=None):
 # ACTUALLY WORKING VERSION -- DO NOT USE ABOVE
 # --------------------------------------------------
 
-
 def SaturateIntersect(eqs1, pol, eqs2, vs, opts=None):
-    R = vs[0].parent()
-    sat = Ideal(eqs1).saturation(pol)[0]
-    print(sat)
-    return Ideal(sat).intersection(Ideal(eqs2)).gens()
+    sat = Ideal(eqs1).saturation(pol)[0]#MSolveSat(eqs1, [pol], vs)
+    return (Ideal(sat)+Ideal(eqs2)+Ideal(pol)).gens()

@@ -18,6 +18,7 @@
 
 from helpers import *
 from msolve import *
+from multi_modular import SaturateIntersect, ElimSaturateIntersect
 
 # ---------------------------------------------------------------------------
 # ComputeMaximalMinors
@@ -140,7 +141,7 @@ def GoodFiberValue(var, hyp, Inequalities, Inequations):
     i = 0
     boo = True
     while boo:
-        hypsol = solve(hyp - i, var)
+        hypsol = solve_line(hyp - i, var)
         ls = {var: hypsol}
         pos = subs(ls, Inequalities)
         ineq = subs(ls, Inequations)
@@ -248,6 +249,10 @@ def TestGenericLineDegreeSingular(F, vars, hyp, singminors, gendeg, opts=None):
     isbounded = opts.get("isbounded", 0)
 
     rag_sat_var, rag_hilb_var = SR.var("rag_sat_var, rag_hilb_var")
+    R = extend_ring(vars[0].parent(), [rag_sat_var, rag_hilb_var])
+    rag_sat_var, rag_hilb_var, F, vars, hyp, singminors = convert_to_ring(
+        R, rag_sat_var, rag_hilb_var, F, vars, hyp, singminors
+    )
 
     if len(F) < len(vars):
         J = Matrix(linalg_jacobian([*F, hyp], vars))
@@ -283,9 +288,9 @@ def TestGenericLineDegreeSingular(F, vars, hyp, singminors, gendeg, opts=None):
                     [rag_sat_var, *vars],
                     {**opts, "elim": 1}
                 )
-                gb = [p for p in gb if rag_sat_var not in indets(p)]
+                gb = [p for p in gb if rag_sat_var not in p.variables()]
                 gb2 = MSolveGroebner([*gb, F[0]], fc, vars, opts)
-                gb2 = [Groebner_LeadingMonomial(p, tord) for p in gb2]
+                gb2 = [Groebner_LeadingMonomial(p) for p in gb2]
                 hs = Groebner_HilbertSeries(gb2, vars, rag_hilb_var)
                 if degree(denom(hs)) == 0:
                     deg = subs({rag_hilb_var: 1}, hs)
@@ -602,7 +607,11 @@ def FindGenericLine(eqs, F, vars, opts=None):
 
     boo, singminors = IsRegular([*eqs, *F], vars, opts)
     lc = CoeffDeform(eqs, F, singminors, vars, opts)
-    hyp, minors, gendeg = FindGenericLineRegular(eqs, F, lc, singminors, vars, opts)
+
+    if boo:
+        hyp, minors, gendeg = FindGenericLineRegular(eqs, F, lc, singminors, vars, opts)
+    else:
+        hyp, minors, gendeg = FindGenericLineSingular([*eqs, *F], vars, singminors, opts)
 
     if boo is True:
         if verb >= 1:
@@ -771,7 +780,7 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
         i = 0
 
         vvar = R(SR(hyp).variables()[0])
-        ls = {vvar: R(solve(SR(hyp - i), SR(vvar))[0].rhs())}
+        ls = {vvar: solve_line(hyp - i, vvar)}
 
         def rr_rand():
             return random.randint(1, 65521)
@@ -786,7 +795,7 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
             lhyp = [randpoly(vars, degree=1, dense=True)
                     for _ in range(len(vars) - len(lF) + 1)]
             gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-            ls = {vvar: R(solve(SR(hyp - i), SR(vvar))[0].rhs())}
+            ls = {vvar: solve_line(hyp - i, vvar)}
         return hyp, [i]
 
 
@@ -873,6 +882,7 @@ def ElimComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
             nsols = [0, []]
             lgb.append([1])
         else:
+            """
             OldDigits = get_precision()
             new_digits = max(
                 10,
@@ -882,6 +892,7 @@ def ElimComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
                           for c in coeffs(p)) / 2)
             )
             set_precision(new_digits)
+            """
 
             gb = ElimSaturateIntersect(
                 [*Equations, *minors, *lF, *toadd],
@@ -930,11 +941,12 @@ def ElimComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
     else:
         j = 0
         vvar = list(indets(hyp))[0]
-        if max(gendeg) == 0:
-            ls = {vvar: solve(hyp - j, vvar)}
+        m = max(gendeg) if type(gendeg) == list or type(gendeg) == tuple else gendeg
+        if m == 0:
+            ls = {vvar: solve_line(hyp - j, vvar)}
             while 0 in subs(ls, [*Fam, *Positive, *NotNull]):
                 j += 1
-                ls = {vvar: solve(hyp - j, vvar)}
+                ls = {vvar: solve_line(hyp - j, vvar)}
             return hyp, [j]
 
         def rr():
@@ -944,14 +956,14 @@ def ElimComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
         lhyp = [randpoly(vars, degree=1, dense=True)
                 for k in range(len(vars) - len(lF) + 1)]
         gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-        ls = {vvar: solve(hyp - j, vvar)}
+        ls = {vvar: solve_line(hyp - j, vvar)}
         while gb != [1] or 0 in subs(ls, [*Positive, *NotNull, *Fam]):
             j += 1
             lF = [*Equations, *[_p + rr() for _p in Fam], hyp - j]
             lhyp = [randpoly(vars, degree=1, dense=True)
                     for k in range(len(vars) - len(lF) + 1)]
             gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-            ls = {vvar: solve(hyp - j, vvar)}
+            ls = {vvar: solve_line(hyp - j, vvar)}
         return hyp, [j]
 
 
@@ -971,6 +983,11 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
     verb = opts.get("verb", 0)
 
     rag_sep_elem, rag_sat_var = SR.var("rag_sep_elem, rag_sat_var")
+    R = extend_ring(vars[0].parent(), [rag_sep_elem, rag_sat_var])
+    rag_sep_elem, rag_sat_var, Equations, Fam, Positive, NotNull, vars, hyp = convert_to_ring(
+        R, rag_sep_elem, rag_sat_var, Equations, Fam, Positive, NotNull, vars, hyp
+    )
+    vminors = list(convert_to_ring(R, *vminors))
 
     def rd():
         return random.randint(1, 65521)
@@ -990,6 +1007,7 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
             nsols = [0, []]
             lgb.append([1])
         else:
+            """
             OldDigits = get_precision()
             new_digits = max(
                 10,
@@ -999,6 +1017,7 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
                           for c in coeffs(p)) / 2)
             )
             set_precision(new_digits)
+            """
 
             gb = SaturateIntersect(
                 [*Equations, *minors, *lF, *toadd],
@@ -1047,8 +1066,8 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
                     [c for c in s if indets(c) <= indets([*vars, rag_sep_elem])]
                     for s in nsols2[1]
                 ]]
-            set_precision(OldDigits)
-            nsols = [0, [*nsols[1], *nsols2[1]]]
+            #set_precision(OldDigits)
+            #nsols = [0, [*nsols[1], *nsols2[1]]]
 
         if len(nsols) < 2:
             print(Equations, Fam, Positive, NotNull, vars, hyp, vminors, gendeg, lc, opts)
@@ -1071,12 +1090,13 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
         return hyp, rr
     else:
         j = 0
-        vvar = list(indets(hyp))[0]
-        if max(gendeg) == 0:
-            ls = {vvar: solve(hyp - j, vvar)}
+        vvar = hyp.variables()[0]
+        m = max(gendeg) if type(gendeg) == list or type(gendeg) == tuple else gendeg
+        if m == 0:
+            ls = {vvar: solve_line(hyp - j, vvar)}
             while 0 in subs(ls, [*Fam, *Positive, *NotNull]):
                 j += 1
-                ls = {vvar: solve(hyp - j, vvar)}
+                ls = {vvar: solve_line(hyp - j, vvar)}
             return hyp, [j]
 
         def rr():
@@ -1086,14 +1106,14 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
         lhyp = [randpoly(vars, degree=1, dense=True)
                 for k in range(len(vars) - len(lF) + 1)]
         gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-        ls = {vvar: solve(hyp - j, vvar)}
+        ls = {vvar: solve_line_line(hyp - j, vvar)}
         while gb != [1] or 0 in subs(ls, [*Positive, *NotNull, *Fam]):
             j += 1
             lF = [*Equations, *[_p + rr() for _p in Fam], hyp - j]
             lhyp = [randpoly(vars, degree=1, dense=True)
                     for k in range(len(vars) - len(lF) + 1)]
             gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
-            ls = {vvar: solve(hyp - j, vvar)}
+            ls = {vvar: solve_line(hyp - j, vvar)}
         return hyp, [j]
 
 
@@ -1800,7 +1820,7 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
 
     for i in range(len(bounds)):
         v = R(SR(hyp).variables()[0])
-        hypsol = R(solve(SR(hyp - bounds[i]), SR(v))[0].rhs())
+        hypsol = R(solve_line(hyp - bounds[i], v))
         ls = {v: hypsol}
         NewEquations = [expand(subs(ls, p)) for p in Equations]
         NewFamPositive = [expand(subs(ls, p)) for p in FamPositive]
@@ -2004,7 +2024,10 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
 
     lsols = []
     for i in range(len(lsys)):
+        # TODO - when maxdeg>1 this is wonky
+        # probably has to do with delta
         if maxdeg > 1:
+            debug(sys=[rag_sat_var * eps - 1, *lsys[i], *delta], vs = [rag_sat_var, eps, *vs])
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], *delta],
                 [rag_sat_var, eps, *vs],

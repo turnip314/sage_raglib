@@ -28,7 +28,8 @@ import random
 import string
 import math
 from fractions import Fraction
-from helpers import isprime, debug
+from helpers import isprime, debug, extend_ring, convert_to_ring
+from sage.all import Ideal
 from sage.misc.sage_eval import sage_eval
 from sage.features.msolve import msolve
 from sage.sets.primes import Primes
@@ -363,7 +364,7 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
         raise RuntimeError("There has been an issue in msolve computation") from e
 
 
-def get_parametrization(vs, system, fc=0):
+def get_parametrization(vs, system, fc=0, allow_null=False):
     filename = msolve().absolute_filename()
     msolve_in = tempfile.NamedTemporaryFile(mode="w", encoding="ascii", delete=False)
     command = [filename, "-f", msolve_in.name, "-P", "2"]
@@ -385,21 +386,27 @@ def get_parametrization(vs, system, fc=0):
     result = msolve_out.stdout
     result = sage_eval(result[:-2])
 
+    if allow_null and result[0] == -1:
+        return None
     if result[0] != 0:
+        print(result)
         raise Exception(
             "Issue with msolve parametrization - system does not have finitely many solutions"
         )
 
     return result
 
-def MSolveParam(Fs, fc, vs, opts=None):
+def MSolveParam(Fs, fc, vs, allow_null=False, opts=None):
     """
     Compute a rational parametrization of the solutions of F.
 
     Returns [elim_poly, [var_i = expr_i, ...]] where each coordinate
     is expressed as a rational function of the root of elim_poly.
     """
-    result = get_parametrization(vs, Fs)
+    result = get_parametrization(vs, Fs, allow_null=allow_null)
+    if result is None:
+        return None
+
     _, nvars, _, msvars, _, param = result[1]
 
     # msolve may reorder the variables, so order them back
@@ -481,7 +488,10 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
 
     merged_opts = {**opts, "param": 1}
 
-    P, Qs, _ = MSolveParam(Fs, 0, vs, merged_opts)
+    param = MSolveParam(Fs, 0, vs, merged_opts)
+    if param is None:
+        return [0, []]
+    P, Qs, _ = param
     Pd = P.derivative()
     u_ = P.parent().gens()[0]
     sols = []
@@ -493,3 +503,18 @@ def MSolveRealRoots(Fs, vs, G=None, opts=None):
         )
 
     return [0, sols]
+
+def MSolveSat(Fs, Gs, vs, fc=0):
+    R = vs[0].parent()
+    y_ = SR.var('y_')
+    R_ext = extend_ring(R, [y_])
+    Fs, Gs, vs, y_ = convert_to_ring(R_ext, Fs, Gs, vs, y_)
+    Id = Ideal(R.one())
+    for g in Gs:
+        sat = MSolveGroebner([g*y_-1, *Fs], fc, [y_, *vs], opts={"elim": 1})
+        sat = [R(f) for f in sat]
+        Id = Id.intersection(Ideal(sat).change_ring(R))
+    return [R(f) for f in Id.gens()]
+
+
+

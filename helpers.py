@@ -32,6 +32,7 @@ def convert_to_ring(R, *args):
     return tuple(res)
 
 def nextprime(r):
+    r = Integer(r)
     return Primes().next(r)
 
 def denom(f):
@@ -91,7 +92,7 @@ def set_precision(a):
     # TODO - we should store everything algebraically so this is not necessary?
     pass
 
-def get_precision(a):
+def get_precision():
     # TODO - same as set_precision
     pass
 
@@ -135,8 +136,8 @@ def sqrfree(f):
     fac = f.factor()
     return [fac.unit(), list(fac)]
 
-def Groebner_LeadingMonomial():
-    pass
+def Groebner_LeadingMonomial(f):
+    return f.lm()
 
 def Groebner_HilbertSeries(gb, vs, newvar):
     R = PolynomialRing(QQ, vs)
@@ -150,9 +151,6 @@ def Groebner_NormalForm():
     pass
 
 def ElimSaturateIntersect():
-    pass
-
-def SaturateIntersect():
     pass
 
 def LinearAlgebra_RowDimension(M):
