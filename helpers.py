@@ -47,17 +47,6 @@ def normal(f):
 def expand(p):
     # TODO - dummy
     return p
-
-def indets(exprs):
-    if type(exprs == list):
-        return list(
-            set().union(*[
-                v.variables()
-                for v in exprs
-            ])
-        )
-    else:
-        return exprs.variables()
     
 def sign(p):
     if p > 0:
@@ -150,18 +139,12 @@ def Groebner_HilbertSeries(gb, vs, newvar):
 def Groebner_NormalForm():
     pass
 
-def ElimSaturateIntersect():
-    pass
-
 def LinearAlgebra_RowDimension(M):
     return len(M.rows())
 
 def LinearAlgebra_ColumnDimension(M):
     return len(M.columns())
 
-def LinearAlgebra_SubMatrix():
-    # TODO
-    pass
 
 def linalg_jacobian(Fs, vs):
     J = Matrix(
