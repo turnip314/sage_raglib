@@ -28,14 +28,3 @@ def HasRealSolutions(eqs, pos, ineqs, opts={}):
             for k, v in opts.items()
         }
         return SemiAlgebraicSolve(eqs, pos, ineqs, newopts)
-
-def DRLHermite(Fs, Rp, Rq, Rf):
-    Id = Ideal(Fs)
-    Gb, B = GroebnerBasis(Fs, Rp, Rq, Rf)
-    Gbr = ReduceGB(Gb, Rp, Rq, Rf)
-    Mx = [XMatrix(Rf(v), Gbr, B, Rp, Rq, Rf) for v in Rq.gens()]
-    Bxs = BMatrices(Mx, B, Rq)
-    Mtr = TraceComputing(Bxs)
-    winf = SquareFree(lcm([LeadingCoefficient(f, Rp, Rq) for f in Gb]))
-
-    return Mtr, winf
