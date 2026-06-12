@@ -21,6 +21,20 @@ from msolve import *
 from multi_modular import SaturateIntersect, ElimSaturateIntersect
 
 # ---------------------------------------------------------------------------
+# IndependentFam
+# ---------------------------------------------------------------------------
+
+def IndependentFam(Fam, vars):
+    """Return a maximal algebraically-independent subset of Fam
+    (as a regular sequence), by greedily testing rank of the Jacobian."""
+    # TODO - currently only a naive check
+    chosen = []
+    for p in Fam:
+        if p not in chosen:
+            chosen.append(p)
+    return chosen
+
+# ---------------------------------------------------------------------------
 # ComputeMaximalMinors
 # ---------------------------------------------------------------------------
 
@@ -393,7 +407,6 @@ def FindGenericLineRegular(eqs, F, lc, singminors, vars, opts=None):
         opts = {}
 
     isbounded = opts.get("isbounded", 0)
-    verb = opts.get("verb", 0)
 
     dF = [F[i] + lc[i] for i in range(len(F))]
 
@@ -408,8 +421,6 @@ def FindGenericLineRegular(eqs, F, lc, singminors, vars, opts=None):
         raise RuntimeError("Generic line should provide finitely many critical points")
 
     for i in range(len(vars)):
-        if verb >= 1:
-            print("+", end="")
         if vars[i] not in F:
             hyp = vars[i]
             deg, minors = TestGenericLineDegreeRegular([*eqs, *dF], vars, hyp, opts)
@@ -422,8 +433,6 @@ def FindGenericLineRegular(eqs, F, lc, singminors, vars, opts=None):
     ll = [[1] * n]
     while True:
         for i in range(len(ll)):
-            if verb >= 1:
-                print("+", end="")
             hyp = sum(ll[i][j] * vars[j] for j in range(n))
             deg, minors = TestGenericLineDegreeRegular([*eqs, *dF], vars, hyp, opts)
             if deg == gendeg or (deg >= 0 and isbounded > 0):
@@ -463,7 +472,6 @@ def FindGenericLineSingular(F, vars, singminors, opts=None):
     # the next loop will return the first variable (see example
     #   F = [x1,x2,x1-x2],vars=[x1,x2,x3])
     for i in range(len(vars)):
-        print("+", end="")
         if vars[i] not in F:
             hyp = vars[i]
             deg, minors = TestGenericLineDegreeSingular(F, vars, hyp, singminors, gendeg, opts)
@@ -476,7 +484,6 @@ def FindGenericLineSingular(F, vars, singminors, opts=None):
     ll = [[1] * n]
     while True:
         for i in range(len(ll)):
-            print("+", end="")
             hyp = sum(ll[i][j] * vars[j] for j in range(n))
             deg, minors = TestGenericLineDegreeSingular(F, vars, hyp, singminors, gendeg, opts)
             all_same_sign = len(set(map(sign, deg))) == 1
@@ -603,8 +610,6 @@ def FindGenericLine(eqs, F, vars, opts=None):
     if opts is None:
         opts = {}
 
-    verb = opts.get("verb", 0)
-
     boo, singminors = IsRegular([*eqs, *F], vars, opts)
     lc = CoeffDeform(eqs, F, singminors, vars, opts)
 
@@ -614,12 +619,8 @@ def FindGenericLine(eqs, F, vars, opts=None):
         hyp, minors, gendeg = FindGenericLineSingular([*eqs, *F], vars, singminors, opts)
 
     if boo is True:
-        if verb >= 1:
-            print("[R]", end="")
         return hyp, minors, gendeg, True, lc
     else:
-        if verb >= 1:
-            print("[S]", end="")
         return hyp, [minors, singminors], gendeg, False, lc
 
 
@@ -731,8 +732,6 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
         R, Equations, Fam, Positive, NotNull, vars, hyp, minors, rag_sep_elem
     )
 
-
-    verb = opts.get("verb", 0)
     rd = random.randint(1, 65521)
 
     if gendeg == 0:
@@ -763,8 +762,6 @@ def ComputeBoundsRegular(Equations, Fam, Positive, NotNull, vars,
         if not HasOverLap(rr):
             rr = ConstructFibers(rr, hyp, [*Positive, *NotNull])
         else:
-            if verb >= 1:
-                print("[Overlap Regular]", end="")
             gb = MSolveGroebner(
                 [*Equations, *Fam, *minors, hyp - rag_sep_elem],
                 0,
@@ -861,8 +858,6 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
     """
     if opts is None:
         opts = {}
-
-    verb = opts.get("verb", 0)
 
     rag_sep_elem, rag_sat_var = SR.var("rag_sep_elem, rag_sat_var")
     R = extend_ring(vars[0].parent(), [rag_sep_elem, rag_sat_var])
@@ -963,8 +958,6 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
         if not HasOverLap(rr):
             rr = ConstructFibers(rr, hyp, [*Positive, *NotNull])
         else:
-            if verb >= 1:
-                print("Overlap Singular", end="")
             rr = ManageOverLapComputeBoundsSingular(
                 Equations, Fam, singminors, minors,
                 gendeg, lgb, hyp, Positive, NotNull, vars, opts
@@ -973,7 +966,7 @@ def ComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
     else:
         j = 0
         vvar = hyp.variables()[0]
-        m = max(gendeg) if type(gendeg) == list or type(gendeg) == tuple else gendeg
+        m = max(gendeg, default=0) if type(gendeg) == list or type(gendeg) == tuple else gendeg
         if m == 0:
             ls = {vvar: solve_line(hyp - j, vvar)}
             while 0 in subs(ls, [*Fam, *Positive, *NotNull]):
@@ -1311,7 +1304,6 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
     if opts is None:
         opts = {}
 
-    verb = opts.get("verb", 0)
     isempty = opts.get("isempty", 0)
 
     sols = []
@@ -1319,13 +1311,7 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
     Positive = [p for p in Inequalities if p not in FamPositive]
     NotNull = [p for p in Inequations if p not in FamNotNull]
 
-    if verb >= 1:
-        print("[b:", end="")
     hyp, bounds = ComputeBounds(Equations, Fam, Positive, NotNull, vars, opts)
-    if verb >= 1:
-        print(f" -> {hyp}, {bounds}", end="")
-    if verb >= 1:
-        print("]", end="")
 
     R = vars[0].parent()
 
@@ -1394,7 +1380,6 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vs, eps, opts=None):
         R, sys, ld, Inequalities, Inequations, vs, eps, T_, rag_sat_var, rag_sep
     )
 
-    verb = opts.get("verb", 0)
     isbounded = opts.get("isbounded", 0)
 
     allvars = [*vs, eps]
@@ -1428,8 +1413,6 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vs, eps, opts=None):
     boo = True
     while boo:
         for i in range(len(ll)):
-            if verb >= 1:
-                print("[+]", end="")
             hyp = sum(ll[i][j] * allvars[j] for j in range(n))
             gb = MSolveGroebnerLM(
                 [rag_sat_var * eps - 1, hyp + rr(), *sys0],
@@ -1513,7 +1496,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
         R, Equations, FamPositive, FamNotNull, Inequalities, Inequations, vs, eps, rag_sat_var
     )
 
-    verb = opts.get("verb", 0)
     isbounded = opts.get("isbounded", 0)
 
     maxdeg = max(degree(p) for p in [*Equations, *FamPositive, *FamNotNull])
@@ -1524,8 +1506,8 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
 
     # Inequations that are NOT part of FamNotNull — those are already
     # deformed inside lsys[i] and must not be appended again.
-    extra_ineqs = [p for p in Inequations if p not in FamNotNull
-                                          and -p not in FamNotNull]
+    # extra_ineqs = [p for p in Inequations if p not in FamNotNull
+    #                                      and -p not in FamNotNull]
     #Inequations = extra_ineqs
 
     J = Matrix(linalg_jacobian([*Equations, *FamPositive, *FamNotNull], vs))
@@ -1613,16 +1595,12 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
         if emin == 2:
             sols = _solve_at_emin(emin)
             while sols[0] > 0:
-                if verb >= 1:
-                    print("*", end="")
                 emin /= 2
                 sols = _solve_at_emin(emin)
         else:
             emin /= 2
             sols = _solve_at_emin(emin)
             while sols[0] > 0:
-                if verb >= 1:
-                    print("*", end="")
                 emin /= 2
                 sols = _solve_at_emin(emin)
 
@@ -1635,16 +1613,12 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
             if emin == 2:
                 sols = _solve_at_emin(-emin)
                 while sols[0] > 0:
-                    if verb >= 1:
-                        print("*", end="")
                     emin /= 2
                     sols = _solve_at_emin(-emin)
             else:
                 emin /= 2
                 sols = _solve_at_emin(-emin)
                 while sols[0] > 0:
-                    if verb >= 1:
-                        print("*", end="")
                     emin /= 2
                     sols = _solve_at_emin(-emin)
 
@@ -1686,7 +1660,6 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
     """
     if opts is None:
         opts = {}
-    verb = opts.get("verb", 0)
     isempty = opts.get("isempty", 0)
     isbounded = opts.get("isbounded", 0)
 
@@ -1699,6 +1672,7 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
         return []
 
     Fam = sorted([*FamPositive, *FamNotNull], key=lambda a: degree(a))
+    Fam = IndependentFam(Fam, vars)
     sols = []
 
     if len(vars) == 1:
@@ -1732,8 +1706,6 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
 
     if False and len(Equations) + len(Fam) > len(vars):
         # TODO - 
-        if verb >= 1:
-            print("[cn", end="")
         try:
             sols = ConstrainedValues(
                 Equations, FamPositive, FamNotNull, vars,
@@ -1744,8 +1716,6 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
         except Exception:
             print(FamPositive, FamNotNull, vars, opts)
             raise RuntimeError("Problem when calling ConstrainedValues")
-        if verb >= 1:
-            print("]", end="")
         if len(sols) > 0 and isempty > 0:
             return sols
     return sols
@@ -1761,7 +1731,6 @@ def SemiAlgebraicSolveIterateOnFamilies(Equations, Families, Inequalities,
     Iterate SolveFamily over all candidate families, collecting solutions.
     Returns a list of solutions.
     """
-    verb = opts.get("verb", 0)
     isempty = opts.get("isempty", 0)
     newvars = opts.get("newvars", [])
     card = opts.get("card", -1)
@@ -1777,26 +1746,15 @@ def SemiAlgebraicSolveIterateOnFamilies(Equations, Families, Inequalities,
         cond1 = (len(newvars) == 0 and len(Fam[0]) + len(Fam[1]) >= card)
         cond2 = (set([x for f in [*Equations, *pos, *nonzero] for x in f.variables()]) == set(newvars))
         if cond1 or cond2:
-            if verb >= 1:
-                print("<", end="")
             newsols = SolveFamily(
                 Equations, pos, nonzero,
                 Inequalities, Inequations, vars, opts
             )
-            if verb >= 1:
-                print(f":->[ns={len(newsols)}]:", end="")
-            if verb >= 1 and (time() - st >= 10 or i == len(Families) - 1):
-                print(f"{{{'%.2f' % (100.0 * (i + 1) / len(Families))}%}}", end="")
-                st = time()
-            if verb >= 1:
-                print(">", end="")
 
             sols.extend(newsols)
             if isempty > 0 and len(sols) > 0:
                 return sols
 
-    if verb >= 1:
-        print(f"++{{{len(sols)}}}++", end="")
     return sols
 
 
@@ -1890,18 +1848,32 @@ def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None
 # ---------------------------------------------------------------------------
 
 def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
-    """
+    r"""
     Top-level semi-algebraic solver. Computes sample points per component
     of the algebraic set and iterates over all sign conditions for the
     constraints.
-    Returns a list of solutions.
+
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for each connected component of the real algebraic set defined
+    by the inputs.
     """
     if opts is None:
         opts = {}
 
-    verb = opts.get("verb", 0)
     isempty = opts.get("isempty", 0)
 
+    # TODO - better filtering for redundant systems
+    Inequations = [f for f in Inequations if f not in Inequalities]
+
+    # Convert all variables and equations to polynomial ring element
     vs = list(set([x for f in [*Equations, *Inequalities, *Inequations] for x in f.variables()]))
     R = PolynomialRing(QQ, vs)
     vs = [R(v) for v in vs]
@@ -1909,6 +1881,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
     Inequalities = [R(f) for f in Inequalities]
     Inequations = [R(f) for f in Inequations]
 
+    # Accumulating set of solutions and signs
     sols = []
     lsigns = set()
 
@@ -1943,16 +1916,18 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
         # the study of some subfamilies can be skipped
         if len(oldvars) > 0 and "card" not in newopts:
             new_only = [v for v in newvars if v not in oldvars]
-            if pol.degree(new_only) == 1:
+            if max(sum(term[1].degree(v) for v in new_only) for term in pol) == 1:
                 newopts = {**opts, "newvars": list(set(pol.variables()) | set(oldvars))}
                 if newopts == opts:
                     oldnewvars = new_only
             else:
                 newopts = opts
 
+        #debug(case="Inequalities START", loop=i, _toStudy=_toStudy )
         newsols = SemiAlgebraicSolveIterateOnFamilies(
             Equations, _toStudy, Inequalities, Inequations, vs, newopts
         )
+        #debug(case="Inequalities END", loop=i,newsols=newsols)
 
         midsols = [
             {v: (k[0] + k[1]) / 2 for v,k in pt.items()}
@@ -1962,8 +1937,6 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
             tuple(map(sign, [q.subs(pt) for q in Inequations]))
             for pt in midsols
         )
-        if verb >= 1 and len(Inequations) > 0:
-            print(f"Signs of inequations at computed points: {lsigns}")
 
         for sol in newsols:
             if sol not in sols:
@@ -2001,9 +1974,11 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
             else:
                 newopts = opts
 
+        #debug(case="Inequations START", loop=i, _toStudy=_toStudy )
         newsols = SemiAlgebraicSolveIterateOnFamilies(
             Equations, _toStudy, Inequalities, Inequations, vs, newopts
         )
+        #debug(case="Inequations END", loop=i,newsols=newsols)
 
         midsols = [
             {R(v): (k[0] + k[1]) / 2 for v, k in pt.items()}
@@ -2014,13 +1989,9 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
             tuple(map(sign, [q.subs(pt) for q in Inequations]))
             for pt in midsols
         )
-        if verb >= 1 and len(Inequations) > 0:
-            print(f"Signs of inequations at computed points: {lsigns}")
 
         # Inequations[i] has no sign change, it can be removed
         if len(set(s[i] for s in lsigns)) == 1:
-            if verb >= 1:
-                print("Removes non-zero constraint", Inequations[i])
             _toStudy = [_l for _l in _toStudy if Inequations[i] not in _l]
 
         for sol in newsols:
