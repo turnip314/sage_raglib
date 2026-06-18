@@ -506,3 +506,37 @@ def ElimComputeBoundsSingular(Equations, Fam, Positive, NotNull, vars,
             gb = MSolveGroebnerLM([*lhyp, *lF], 0, vars, opts)
             ls = {vvar: solve_line(hyp - j, vvar)}
         return hyp, [j]
+    
+# ---------------------------------------------------------------------------
+# ModularLimits
+# ---------------------------------------------------------------------------
+
+def ModularLimits(Equations, pol, vars, eps, opts=None):
+    """
+    Compute the degree truncation needed for limits of critical points
+    near the vanishing locus of pol.
+    Returns (bool, trunc_deg).
+    """
+    if opts is None:
+        opts = {}
+
+    rag_sat_var = SR.var("rag_sat_var")
+
+    rrfc = random.randint(2**30, 1303905301)
+    fc = nextprime(rrfc)
+    mdeg = max(degree(p) for p in [pol, *Equations])
+    gb = MSolveGroebner(
+        [rag_sat_var * pol - 1, *Equations],
+        fc,
+        [rag_sat_var, *vars],
+        {**opts, "elim": 1}
+    )
+    gb = [p for p in gb if rag_sat_var not in p.variables()]
+    gb2 = MSolveGroebner([eps, *gb], fc, vars, opts)
+    if gb2 == [1]:
+        return False, 0
+    else:
+        tord = tdeg(*vars)
+        gb2 = [Groebner_LeadingMonomial(p, tord) for p in gb2]
+        trunc_deg = DegreeTruncate(gb, [eps], gb2, vars, fc, mdeg, opts)
+        return True, trunc_deg

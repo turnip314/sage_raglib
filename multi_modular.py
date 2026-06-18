@@ -34,6 +34,7 @@ from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.rings.polynomial.term_order import TermOrder
 import sys
 from msolve import MSolveGroebner, MSolveGroebnerLM, MSolveSat
+from helpers import debug
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +193,7 @@ def LiftPolynomials(lctables, support, primetable, modulus, islifted):
                 if cc is None:
                     return lifted
                 # support[i] is stored ascending; reverse index mirrors Maple's length-j+1
-                pol = pol + cc * support[i][length - j - 1]
+                pol = pol + cc * support[i][j]#[length - j - 1]
             lifted.append(pol)
     return lifted
 
@@ -485,7 +486,6 @@ def SaturateIntersectMSolve(eqs1, pol, eqs2, vs, opts=None):
         fc = next_prime(fc)
     gb = ModSatIntersect(eqs1, pol, eqs2, fc, vs, newopts)
     lmgb = [_leading_monomial(p, vs) for p in gb]
-
     while lmgb != lm:
         fc = next_prime(fc)
         while fc == fcinit:
@@ -519,6 +519,7 @@ def SaturateIntersectMSolve(eqs1, pol, eqs2, vs, opts=None):
     prevlifted = []
 
     while boo:
+        #debug(loop="")
         if(nprimes>10):
             return
         fc = next_prime(fc)
@@ -550,10 +551,12 @@ def SaturateIntersectMSolve(eqs1, pol, eqs2, vs, opts=None):
                     oldwitness = witness
                 else:
                     oldwitness = witness
+            #debug(lctables=lctables, support=support, primetable=primetable, modulus=modulus, islifted=islifted)
 
             if boo1 and boo2:
                 #print("*", end="", flush=True)
                 newlifted = LiftPolynomials(lctables, support, primetable, modulus, islifted)
+                #debug(newlifted=newlifted)
                 islifted = 0
                 for i in range(min(len(newlifted), len(prevlifted))):
                     if newlifted[i] == prevlifted[i] and newlifted[i] not in lifted:
@@ -565,6 +568,7 @@ def SaturateIntersectMSolve(eqs1, pol, eqs2, vs, opts=None):
                         break
                 prevlifted = newlifted
                 if len(lifted) == N:
+                    #debug(lifted=lifted)
                     return [p.numerator() for p in lifted]
         else:
             print("Bad prime")

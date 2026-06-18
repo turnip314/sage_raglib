@@ -1015,40 +1015,6 @@ def ComputeBounds(Equations, Fam, Positive, NotNull, vars, opts=None):
 
 
 # ---------------------------------------------------------------------------
-# ModularLimits
-# ---------------------------------------------------------------------------
-
-def ModularLimits(Equations, pol, vars, eps, opts=None):
-    """
-    Compute the degree truncation needed for limits of critical points
-    near the vanishing locus of pol.
-    Returns (bool, trunc_deg).
-    """
-    if opts is None:
-        opts = {}
-
-    rag_sat_var = SR.var("rag_sat_var")
-
-    rrfc = random.randint(2**30, 1303905301)
-    fc = nextprime(rrfc)
-    mdeg = max(degree(p) for p in [pol, *Equations])
-    gb = MSolveGroebner(
-        [rag_sat_var * pol - 1, *Equations],
-        fc,
-        [rag_sat_var, *vars],
-        {**opts, "elim": 1}
-    )
-    gb = [p for p in gb if rag_sat_var not in p.variables()]
-    gb2 = MSolveGroebner([eps, *gb], fc, vars, opts)
-    if gb2 == [1]:
-        return False, 0
-    else:
-        tord = tdeg(*vars)
-        gb2 = [Groebner_LeadingMonomial(p, tord) for p in gb2]
-        trunc_deg = DegreeTruncate(gb, [eps], gb2, vars, fc, mdeg, opts)
-        return True, trunc_deg
-
-# ---------------------------------------------------------------------------
 # UnivariateSolveFamily
 # ---------------------------------------------------------------------------
 
@@ -1557,8 +1523,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                     for _p in sols[1]
                     for x in subs(_p, eps) # TODO - subs
                 )
-                # emin = min(abs(op(subs(_p, eps))) for _p in sols[1])
-                #emin:=min(map(abs, map(op, map(_p->subs(_p, eps), sols[2]))));
 
         # TODO - figure out 
         #print("TODO:")
@@ -1656,7 +1620,21 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
     """
     Main solver for one family: dispatch to univariate, square system,
     UnboundedComponents, ZeroDimBoundaries, or ConstrainedValues.
-    Returns a list of solutions.
+    
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``Families`` -- A list of of families, where each family consists of two lists of
+      indices indicating which inequalities and inequations belong to the family
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``vars`` -- A list of variables appearing in all expressions
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for the family satisfying any `Inequalities` and `Inequations`
+    constraints.
     """
     if opts is None:
         opts = {}
@@ -1671,14 +1649,18 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
                if degree(_pol) <= 0]]:
         return []
 
+    # Group inequalities and inequations into one family. Solutions will be
+    # filtered by sign values later.
     Fam = sorted([*FamPositive, *FamNotNull], key=lambda a: degree(a))
     Fam = IndependentFam(Fam, vars)
     sols = []
 
+    # One variable case
     if len(vars) == 1:
         return UnivariateSolveFamily(Equations, FamPositive, Inequalities,
                                      Inequations, vars)
 
+    # Zero-dimensional system. Naive check that doesn't test for algebraic independence.
     if len(Equations) == len(vars):
         sols = MSolveRealRoots(
             Equations, vars,
@@ -1690,6 +1672,7 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
         sols = AdmissibleSolutions(sols, len(FamPositive) + len(Inequalities))
         return sols
 
+    # Intersection of equations is positive-dimensional.
     if len(Equations) + len(Fam) < len(vars):
         sols = UnboundedComponents(
             Equations, FamPositive, FamNotNull, Inequalities, Inequations, vars, opts
@@ -1697,6 +1680,7 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
         if len(sols) > 0 and isempty > 0:
             return sols
 
+    # Intersection of equations is zero-dimensional. Naive check.
     if len(Equations) + len(Fam) == len(vars):
         sols = ZeroDimBoundaries(
             Equations, FamPositive, FamNotNull, Inequalities, Inequations, vars, opts
@@ -1704,6 +1688,7 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
         if len(sols) > 0 and isempty > 0:
             return sols
 
+    # TODO - this code is never used.
     if False and len(Equations) + len(Fam) > len(vars):
         # TODO - 
         try:
@@ -1728,15 +1713,29 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
 def SemiAlgebraicSolveIterateOnFamilies(Equations, Families, Inequalities,
                                          Inequations, vars, opts):
     """
-    Iterate SolveFamily over all candidate families, collecting solutions.
-    Returns a list of solutions.
+    Iterate SolveFamily over all candidate families of inequalities and inequatoins,
+    collecting solutions.
+    
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``Families`` -- A list of of families, where each family consists of two lists of
+      indices indicating which inequalities and inequations belong to the family
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``vars`` -- A list of variables appearing in all expressions
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for each connected component of the semi real algebraic set defined
+    by the inputs.
     """
     isempty = opts.get("isempty", 0)
     newvars = opts.get("newvars", [])
     card = opts.get("card", -1)
 
     sols = []
-    st = time()
 
     for i in range(len(Families)):
         Fam = Families[i]
@@ -1766,7 +1765,19 @@ def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None
     """
     Compute one sample point per connected component of the algebraic set
     defined by Equations, satisfying Inequalities and Inequations.
-    Returns a list of solutions.
+    
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for each connected component of the real algebraic set defined
+    by the inputs.
+
     """
     if opts is None:
         opts = {}
@@ -1885,6 +1896,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
     sols = []
     lsigns = set()
 
+    # Determine solutions to equations satisfying inequalities and inequations
     if len(Equations) > 0:
         sols = PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts)
         if isempty >= 1 and len(sols) > 0:
@@ -1892,11 +1904,15 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
 
     oldvars, = convert_to_ring(R, [x for f in Equations for x in f.variables()])
     nc = len(Inequalities) + len(Inequations)
+
+    # List of families studied. A family consists of lists of indices of which
+    # inequalities and inequations to consider.
     _Studied = [[[], []]]
     newsols = []
 
     # TODO: improve the choice of Inequalities and introduce criteria to
     # reduce the combinatorial complexity
+    # Determine solutions over all families of inequalities
     for i in range(len(Inequalities)):
         pol = Inequalities[i]
         newvars = list(pol.variables())
@@ -1950,6 +1966,7 @@ def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
 
     # TODO: improve the choice of Inequations and introduce criteria to
     # reduce the combinatorial complexity
+    # Determine solutions over all families of inequations
     for i in range(len(Inequations)):
         pol = Inequations[i]
         newvars = list(pol.variables())

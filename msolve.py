@@ -278,7 +278,6 @@ def MSolveGroebner(F, fc, vs, opts=None):
 
     Options:
       "mspath"   : path to msolve binary
-      "verb"     : verbosity (positive int)
       "file_dir" : directory for intermediate files
       "file_in"  : input filename
       "file_out" : output filename
@@ -291,6 +290,7 @@ def MSolveGroebner(F, fc, vs, opts=None):
     """
     if opts is None:
         opts = {}
+
     field_char = CheckCharacteristic(fc)
     R_original = vs[0].parent()
 
@@ -299,7 +299,7 @@ def MSolveGroebner(F, fc, vs, opts=None):
 
     nvars   = len(vs)
     xx      = list(SR.var('xx_', nvars))
-    R = PolynomialRing(QQ, xx)
+    R = PolynomialRing(F[0].parent().base_ring(), xx)
     xx = list(R.gens())
     subs_in  = {vs[i]: xx[i] for i in range(nvars)}
     subs_out = {xx[i]: vs[i] for i in range(nvars)}
@@ -322,6 +322,18 @@ def MSolveGroebner(F, fc, vs, opts=None):
     except Exception as e:
         raise RuntimeError("There has been an issue in msolve computation") from e
 
+def MSolveEliminate(F, vs, elim_vs, fc=0, opts=None):
+    if opts is None:
+        opts = {}
+    elim = len(elim_vs)
+    final_vs = [v for v in vs if v not in elim_vs]
+    vs = elim_vs + final_vs
+    R = PolynomialRing(elim_vs[0].parent().base_ring(), final_vs)
+    gb = MSolveGroebner(
+        F, fc, vs, opts | {"elim": elim}
+    )
+    gb = [R(f) for f in gb]
+    return gb
 
 def MSolveGroebnerLM(F, fc, vs, opts=None):
     """
@@ -329,6 +341,7 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
     """
     if opts is None:
         opts = {}
+
     field_char = CheckCharacteristic(fc)
     R_original = vs[0].parent()
 
@@ -337,7 +350,7 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
 
     nvars   = len(vs)
     xx      = list(SR.var('xx_', nvars))
-    R = PolynomialRing(QQ, xx)
+    R = PolynomialRing(F[0].parent().base_ring(), xx)
     xx = list(R.gens())
     subs_in  = {vs[i]: xx[i] for i in range(nvars)}
     subs_out = {xx[i]: vs[i] for i in range(nvars)}
@@ -355,6 +368,8 @@ def MSolveGroebnerLM(F, fc, vs, opts=None):
         results_renamed = sage_eval(raw, locals={f'{v}': v for v in xx})
         results = _subs_results(results_renamed, subs_out)
         results = [R_original(r) for r in results]
+        if not results:
+            return [1]
         RemoveFiles(fname1, fname2)
         return results
     except Exception as e:
