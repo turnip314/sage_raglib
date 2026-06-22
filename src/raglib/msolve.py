@@ -28,7 +28,7 @@ import random
 import string
 import math
 from fractions import Fraction
-from helpers import isprime, debug, extend_ring, convert_to_ring, subs
+from raglib.helpers import isprime, debug, extend_ring, convert_to_ring, subs
 from sage.all import Ideal
 from sage.misc.sage_eval import sage_eval
 from sage.features.msolve import msolve

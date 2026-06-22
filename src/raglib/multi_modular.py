@@ -1,4 +1,5 @@
-# This file is part of RAGlib (Real Algebraic Geometry Library).
+# This file is a SageMath translation of RAGlib 
+# (Real Algebraic Geometry Library).
 #
 # RAGlib is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,7 +15,8 @@
 # along with RAGlib.  If not, see <https://www.gnu.org/licenses/>
 #
 # Authors:
-# Mohab Safey El Din
+# Mohab Safey El Din (original author, Maple)
+# Andrew Luo (Sage translator)
 
 # Multi-modular routines used in RAGlib
 # Most of them should be implemented in msolve in a not too far
@@ -33,8 +35,8 @@ from sage.all import (
 from sage.rings.polynomial.polynomial_ring_constructor import PolynomialRing
 from sage.rings.polynomial.term_order import TermOrder
 import sys
-from msolve import MSolveGroebner, MSolveGroebnerLM, MSolveSat
-from helpers import debug
+from raglib.msolve import MSolveGroebner, MSolveGroebnerLM, MSolveSat
+from raglib.helpers import debug
 
 
 # ---------------------------------------------------------------------------

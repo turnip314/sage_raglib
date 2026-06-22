@@ -1,5 +1,5 @@
 
-from raglib import *
+from raglib.raglib import *
 from sage.all import Ideal, matrix, PolynomialRing, QQ, qepcad, show, lcm, prod, SR
 
 def GroebnerBasis(Fs, Rp, Rq, Rf):

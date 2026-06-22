@@ -1,4 +1,5 @@
-# This file is part of RAGlib (Real Algebraic Geometry Library).
+# This file is a SageMath translation of RAGlib 
+# (Real Algebraic Geometry Library).
 #
 # RAGlib is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,11 +15,12 @@
 # along with RAGlib.  If not, see <https://www.gnu.org/licenses/>
 #
 # Authors:
-# Mohab Safey El Din
+# Mohab Safey El Din (original author, Maple)
+# Andrew Luo (Sage translator)
 
-from helpers import *
-from msolve import *
-from multi_modular import SaturateIntersect, ElimSaturateIntersect
+from raglib.helpers import *
+from raglib.msolve import *
+from raglib.multi_modular import SaturateIntersect, ElimSaturateIntersect
 
 # ---------------------------------------------------------------------------
 # IndependentFam
@@ -42,6 +44,14 @@ def ComputeMaximalMinors(M):
     """
     Compute the maximal minors of matrix M (nr x nc, nr <= nc).
     Returns a sorted list of square-free minors ordered by degree.
+
+    INPUT:
+
+    * ``M`` -- A matrix
+
+    OUTPUT:
+
+    A list of maximal minors of ``M``.
     """
     nr = LinearAlgebra_RowDimension(M)
     nc = LinearAlgebra_ColumnDimension(M)
@@ -68,6 +78,16 @@ def IsRegular(Fs, vs, opts=None):
     """
     Test whether the system F is regular.
     Returns (bool, ld) where ld is the list of maximal minors of the Jacobian.
+
+    INPUT:
+
+    * ``Fs`` -- A list of polynomials
+    * ``vs`` -- A list of variables appearing in ``Fs``
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A boolean.
     """
     if opts is None:
         opts = {}
@@ -83,7 +103,7 @@ def IsRegular(Fs, vs, opts=None):
             for f in Fs
         ]
     )
-    #J = Matrix(linalg_jacobian(Fs, vs))
+
     ld = ComputeMaximalMinors(J)
     ld = [x for x in ld if x != 0]
     gb = MSolveGroebnerLM([*Fs, *ld, hyp], 0, vs, opts)
@@ -97,10 +117,21 @@ def IsRegular(Fs, vs, opts=None):
 # HaveFiniteIntersections
 # ---------------------------------------------------------------------------
 
-def HaveFiniteIntersections(eqs, cstr, vars, opts=None):
+def HaveFiniteIntersections(eqs, cstr, vs, opts=None):
     """
     Test whether each constraint in cstr, together with eqs and a random
     hyperplane, gives a zero-dimensional system.
+
+    INPUT:
+
+    * ``eqs`` -- A list of polynomials
+    * ``cstr`` -- A list of polynomials representing the original constraints
+    * ``vs`` -- A list of variables appearing in ``eqs`` and ``cstr``
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A boolean.
     """
     if opts is None:
         opts = {}
@@ -109,8 +140,8 @@ def HaveFiniteIntersections(eqs, cstr, vars, opts=None):
         return random.randint(1, 2**30)
 
     for i in range(len(cstr)):
-        hyp = sum(rr() * vars[j] for j in range(len(vars))) + rr()
-        gb = MSolveGroebnerLM([*eqs, cstr[i], hyp], 0, vars, opts)
+        hyp = sum(rr() * vs[j] for j in range(len(vs))) + rr()
+        gb = MSolveGroebnerLM([*eqs, cstr[i], hyp], 0, vs, opts)
         if gb != [1]:
             return False
     return True
@@ -126,10 +157,19 @@ def GoodFiberValue_svars(svars, Inequalities, Inequations):
     inequation vanishes.
     # To be improved; one should also return values that make positive the
     # inequalities
+
+    INPUT:
+
+    * ``svars`` -- A list of variables
+    * ``Inequalities`` -- A list of polynomials
+    * ``Inequations`` -- A list of polynomials
+
+    OUTPUT:
+
+    A dictionary mapping each variable in ``svars`` to an integer.
     """
-    boo = True
     j = 0
-    while boo:
+    while True:
         spt = {svars[i]: j for i in range(len(svars))}
         sineq = subs(spt, Inequations)
         spos = [
@@ -150,11 +190,20 @@ def GoodFiberValue(var, hyp, Inequalities, Inequations):
     """
     Find a non-negative integer i such that hyp=i gives a fiber where
     all inequalities and inequations are non-zero.
-    Returns (ls, hypsol).
+
+    INPUT:
+
+    * ``var`` -- A variable
+    * ``hyp`` -- A linear polynomial
+    * ``Inequalities`` -- A list of polynomials
+    * ``Inequations`` -- A list of polynomials
+
+    OUTPUT:
+
+    A tuple ``(ls, hypsol)`` where ``ls`` is a dictionary mapping ``var`` to ``hypsol``
     """
     i = 0
-    boo = True
-    while boo:
+    while True:
         hypsol = solve_line(hyp - i, var)
         ls = {var: hypsol}
         pos = subs(ls, Inequalities)
@@ -497,12 +546,25 @@ def FindGenericLineSingular(F, vars, singminors, opts=None):
 # CoeffDeform_eps
 # ---------------------------------------------------------------------------
 
-def CoeffDeform_eps(eqs, F, vars, eps, cstr, opts=None):
+def CoeffDeform_eps(eqs, F, vs, eps, cstr, opts=None):
     """
     Find small integer deformation coefficients lc such that
     the system [eqs, F[i] + lc[i]*eps] has a Groebner basis with
     the same leading monomials as a random deformation and finite
     intersections with cstr.
+
+    INPUT:
+
+    * ``eqs`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``F`` -- A list of polynomials in ``vs``
+    * ``vs`` -- A list of variables
+    * ``eps`` -- epsilon variable
+    * ``cstr`` -- A list of polynomials representing the original constraints
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    An integer.
     """
     if opts is None:
         opts = {}
@@ -512,10 +574,10 @@ def CoeffDeform_eps(eqs, F, vars, eps, cstr, opts=None):
     
     sat_var = SR.var("sat_var")
 
-    allvars = [sat_var, *vars, eps]
-    R = extend_ring(vars[0].parent(), [sat_var])
-    eqs, F, vars, eps, cstr, sat_var, allvars = convert_to_ring(
-        R, eqs, F, vars, eps, cstr, sat_var, allvars
+    allvars = [sat_var, *vs, eps]
+    R = extend_ring(vs[0].parent(), [sat_var])
+    eqs, F, vs, eps, cstr, sat_var, allvars = convert_to_ring(
+        R, eqs, F, vs, eps, cstr, sat_var, allvars
     )
 
     tmp = [sat_var * eps - 1, *eqs, *[F[i] + rr() * eps for i in range(len(F))]]
@@ -1015,7 +1077,80 @@ def ComputeBounds(Equations, Fam, Positive, NotNull, vars, opts=None):
 
 
 # ---------------------------------------------------------------------------
-# UnivariateSolveFamily
+# AdmissibleSolutions
+# ---------------------------------------------------------------------------
+
+def AdmissibleSolutions(tsols, np):
+    """
+    Filter tsols[1] keeping only solutions where the first np sign
+    conditions are positive and the remaining are non-zero.
+    """
+
+    if len(tsols) == 2:
+        return tsols[1]
+    elif len(tsols) == 0:
+        return []
+
+    sols = []
+    if len(tsols[1]) > 0 and len(tsols) > 2:
+        for j in range(len(tsols[1])):
+            # sgn = [op(x) for x in tsols[2][j][:np]]
+            # sgn := map(op, tsols[3][j][1..np]);
+            sgn = [
+                x
+                for arr in tsols[2][j][:np]
+                for x in arr
+            ]
+            if (-1 not in [sign(x) for x in sgn]
+                    and 0 not in sgn
+                    and 0 not in [x for xs in tsols[2][j][np:] for x in xs]):
+                sols.append(tsols[1][j])
+    return sols
+
+
+def GenerateDeformedFamilies_eps(eqs, FamPositive, FamNotNull,
+                                  vs, eps, cstr, opts=None):
+    """
+    Generate all deformed families by appending +pol or -pol per element
+    of FamNotNull, then computing CoeffDeform_eps for each.
+
+    INPUT:
+
+    * ``eqs`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``FamPositive`` -- A list containing a subset of ``Inequalities`` to consider
+    * ``FamNotNull`` -- A list containing a subset of ``Inequations`` to consider
+    * ``vs`` -- A list of variables appearing in all expressions
+    * ``eps`` -- epsilon variable
+    * ``cstr`` -- A list of polynomials representing the original constraints
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of polynomials in ``vs`` and ``eps``.
+    """
+    if opts is None:
+        opts = {}
+
+    deform = [FamPositive]
+    for i in range(len(FamNotNull)):
+        pol = FamNotNull[i]
+        deform1 = [_l + [pol] for _l in deform]
+        deform2 = [_l + [-pol] for _l in deform if len(_l) > 0]
+        deform = [*deform1, *deform2]
+
+    lsys = []
+    for i in range(len(deform)):
+        lc = CoeffDeform_eps(eqs, deform[i], vs, eps, cstr, opts)
+        sys = [*eqs, *[deform[i][j] - lc[j] * eps for j in range(len(deform[i]))]]
+        lsys.append(sys)
+
+    return lsys
+
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# SYSTEM SOLVERS
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
@@ -1117,77 +1252,14 @@ def UnivariateSolveFamily(Equations, Fam, Inequalities, Inequations, vs):
     return sols
 
 
-# ---------------------------------------------------------------------------
-# AdmissibleSolutions
-# ---------------------------------------------------------------------------
-
-def AdmissibleSolutions(tsols, np):
-    """
-    Filter tsols[1] keeping only solutions where the first np sign
-    conditions are positive and the remaining are non-zero.
-    """
-
-    if len(tsols) == 2:
-        return tsols[1]
-    elif len(tsols) == 0:
-        return []
-
-    sols = []
-    if len(tsols[1]) > 0 and len(tsols) > 2:
-        for j in range(len(tsols[1])):
-            # sgn = [op(x) for x in tsols[2][j][:np]]
-            # sgn := map(op, tsols[3][j][1..np]);
-            sgn = [
-                x
-                for arr in tsols[2][j][:np]
-                for x in arr
-            ]
-            if (-1 not in [sign(x) for x in sgn]
-                    and 0 not in sgn
-                    and 0 not in [x for xs in tsols[2][j][np:] for x in xs]):
-                sols.append(tsols[1][j])
-    return sols
-
-
-# ---------------------------------------------------------------------------
-# GenerateDeformedFamilies_eps
-# Generates families to solve
-# ---------------------------------------------------------------------------
-
-def GenerateDeformedFamilies_eps(eqs, FamPositive, FamNotNull,
-                                  vars, eps, cstr, opts=None):
-    """
-    Generate all deformed families by appending +pol or -pol per element
-    of FamNotNull, then computing CoeffDeform_eps for each.
-    """
-    if opts is None:
-        opts = {}
-
-    deform = [FamPositive]
-    for i in range(len(FamNotNull)):
-        pol = FamNotNull[i]
-        deform1 = [_l + [pol] for _l in deform]
-        deform2 = [_l + [-pol] for _l in deform if len(_l) > 0]
-        deform = [*deform1, *deform2]
-
-    lsys = []
-    for i in range(len(deform)):
-        lc = CoeffDeform_eps(eqs, deform[i], vars, eps, cstr, opts)
-        sys = [*eqs, *[deform[i][j] - lc[j] * eps for j in range(len(deform[i]))]]
-        lsys.append(sys)
-
-    return lsys
-
-
-# ---------------------------------------------------------------------------
-# ConstrainedValues
-# ---------------------------------------------------------------------------
-
 def ConstrainedValues(Equations, FamPositive, FamNotNull, vs,
                        Inequalities, Inequations, opts=None):
     """
     Compute constrained values by solving deformed zero-dimensional systems.
     Returns a list of solutions.
+
+    NOTE: This function is currently not being called anywhere as we do not currently support
+    the case where the family is over-determined.
     """
     if opts is None:
         opts = {}
@@ -1256,16 +1328,26 @@ def ConstrainedValues(Equations, FamPositive, FamNotNull, vs,
     return sols
 
 
-# ---------------------------------------------------------------------------
-# UnboundedComponents
-# ---------------------------------------------------------------------------
-
 def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
                          Inequations, vars, opts=None):
     """
-    Compute sample points in unbounded semi-algebraic components by
-    projecting onto a fiber, then recursing on each fiber value.
-    Returns a list of solutions.
+    Compute sample points in unbounded semi-algebraic components by projecting onto a fiber, 
+    then recursing on each fiber value.
+
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``FamPositive`` -- A list containing a subset of ``Inequalities`` to consider
+    * ``FamNotNull`` -- A list containing a subset of ``Inequations`` to consider
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``vs`` -- A list of variables appearing in all expressions
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for the family satisfying any `Inequalities` and `Inequations`
+    constraints.
     """
     if opts is None:
         opts = {}
@@ -1309,10 +1391,6 @@ def UnboundedComponents(Equations, FamPositive, FamNotNull, Inequalities,
     return sols
 
 
-# ---------------------------------------------------------------------------
-# DegenerateDeformedSystem
-# ---------------------------------------------------------------------------
-
 def DegenerateDeformedSystem(sys, ld, Inequalities, Inequations, vars, eps, opts):
     """
     Handle a degenerate deformed system by saturating and computing real roots.
@@ -1328,14 +1406,11 @@ def DegenerateDeformedSystem(sys, ld, Inequalities, Inequations, vars, eps, opts
     return sols
 
 
-# ---------------------------------------------------------------------------
-# InfiniteBranches
-# ---------------------------------------------------------------------------
-
 def InfiniteBranches(sys, ld, Inequalities, Inequations, vs, eps, opts=None):
     """
     Compute solutions near infinity (as eps -> 0) for a deformed system.
     Returns (sols1, sols2).
+    
     """
     if opts is None:
         opts = {}
@@ -1440,16 +1515,26 @@ def InfiniteBranches(sys, ld, Inequalities, Inequations, vs, eps, opts=None):
     return sols1, sols2
 
 
-# ---------------------------------------------------------------------------
-# ZeroDimBoundaries
-# ---------------------------------------------------------------------------
-
 def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                        Inequalities, Inequations, vs, opts=None):
     """
     Compute boundary points where the semi-algebraic set has dimension zero
     by deforming the family and tracking specialisations.
-    Returns a list of solutions.
+
+    INPUT:
+
+    * ``Equations`` -- A list of polynomials defining zeroes of the algebraic set
+    * ``FamPositive`` -- A list containing a subset of ``Inequalities`` to consider
+    * ``FamNotNull`` -- A list containing a subset of ``Inequations`` to consider
+    * ``Inequalities`` -- A list of polynomials defining positive constraints
+    * ``Inequations`` -- A list of polynomials non-zero constraints
+    * ``vs`` -- A list of variables appearing in all expressions
+    * ``opts`` -- a dict of options or ``None``
+
+    OUTPUT:
+
+    A list of solutions for the family satisfying any `Inequalities` and `Inequations`
+    constraints.
     """
     if opts is None:
         opts = {}
@@ -1470,12 +1555,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
         [*Inequalities, *Inequations]
     )
 
-    # Inequations that are NOT part of FamNotNull — those are already
-    # deformed inside lsys[i] and must not be appended again.
-    # extra_ineqs = [p for p in Inequations if p not in FamNotNull
-    #                                      and -p not in FamNotNull]
-    #Inequations = extra_ineqs
-
     J = Matrix(linalg_jacobian([*Equations, *FamPositive, *FamNotNull], vs))
     delta = ComputeMaximalMinors(J)
     if delta == [0]:
@@ -1484,7 +1563,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
     lsols = []
     for i in range(len(lsys)):
         if maxdeg > 1:
-            #debug(sys=[rag_sat_var * eps - 1, *lsys[i], *delta], vs = [rag_sat_var, eps, *vs])
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], *delta],
                 [rag_sat_var, eps, *vs],
@@ -1524,9 +1602,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                     for x in subs(_p, eps) # TODO - subs
                 )
 
-        # TODO - figure out 
-        #print("TODO:")
-        #print("ineq:", Inequations)
         for j in range(len(Inequations)):
             sols = MSolveRealRoots(
                 [rag_sat_var * eps - 1, *lsys[i], Inequations[j]],
@@ -1544,7 +1619,7 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
                     for x in subs(_p, eps) # TODO - subs
                 )
 
-        # Find rational approximation of emin
+        # Find rational approximation of emin to make Groebner computations easier
         emin = AA(emin).n().nearby_rational(emin/2**10)/2
         def _solve_at_emin(emin_val):
             
@@ -1610,10 +1685,6 @@ def ZeroDimBoundaries(Equations, FamPositive, FamNotNull,
 
     return lsols
 
-
-# ---------------------------------------------------------------------------
-# SolveFamily
-# ---------------------------------------------------------------------------
 
 def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
                 Inequations, vars, opts=None):
@@ -1707,7 +1778,9 @@ def SolveFamily(Equations, FamPositive, FamNotNull, Inequalities,
 
 
 # ---------------------------------------------------------------------------
-# SemiAlgebraicSolveIterateOnFamilies
+# ---------------------------------------------------------------------------
+# SEMI-ALGEBRAIC SOLVER
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def SemiAlgebraicSolveIterateOnFamilies(Equations, Families, Inequalities,
@@ -1758,7 +1831,9 @@ def SemiAlgebraicSolveIterateOnFamilies(Equations, Families, Inequalities,
 
 
 # ---------------------------------------------------------------------------
-# PointsPerComponentsAlgebraic
+# ---------------------------------------------------------------------------
+# ALGEBRAIC SOLVER
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None):
@@ -1853,9 +1928,10 @@ def PointsPerComponentsAlgebraic(Equations, Inequalities, Inequations, opts=None
 
     return [*sols, *newsols]
 
-
 # ---------------------------------------------------------------------------
-# SemiAlgebraicSolve
+# ---------------------------------------------------------------------------
+# TOP LEVEL SOLVER
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
 def SemiAlgebraicSolve(Equations, Inequalities, Inequations, opts=None):
