@@ -1,15 +1,21 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "raglib"
 version = "0.1.0"
-description = "Real Algebraic Geometry"
-authors = [{ name="Andrew Luo", email="j92luo@uwaterloo.ca" }]
+description = "Real Algebraic Geometry Library"
+authors = [
+  { name="Andrew Luo", email="j92luo@uwaterloo.ca" }
+]
 readme = "README.md"
-requires-python = ">=3.7"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
 dependencies = []
+
+[project.urls]
+repository = "https://github.com/turnip314/sage_raglib"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
