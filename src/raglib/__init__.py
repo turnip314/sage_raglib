@@ -1,3 +1,3 @@
-from raglib import *
-from rrc import *
-from msolve import *
+from raglib.raglib import *
+from raglib.msolve import *
+from raglib.rrc import *
