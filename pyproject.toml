@@ -1,5 +1,5 @@
 [project]
-name = "raglib"
+name = "sage_raglib"
 version = "0.1.0"
 description = "Real Algebraic Geometry Library"
 authors = [
